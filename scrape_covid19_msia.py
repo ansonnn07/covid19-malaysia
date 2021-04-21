@@ -10,6 +10,58 @@ import os
 from IPython.display import display
 import sys
 
+month_translation = {"January": "januari",
+                     "February": "februari",
+                     "March": "mac",
+                     "April": "april",
+                     "May": "mei",
+                     "June": "jun",
+                     "July": "julai",
+                     "August": "ogos",
+                     "September": "september",
+                                  "October": "oktober",
+                                  "November": "november",
+                                  "December": "disember"}
+
+cases_to_extract_old = ["pulih", "kumulatif kes yang telah pulih", "kes baharu",
+                        "jumlah kes positif", "Unit Rawatan Rapi",
+                        "pernafasan", "kes kematian", "kumulatif kes kematian"]
+
+cases_to_extract_new = ["Kes sembuh", "kumulatif_0", "kes baharu",
+                        "kumulatif_1", "Kes import", "Kes tempatan",
+                        "Kes aktif", "Unit Rawatan Rapi",
+                        "pernafasan", "Kes kematian", "kumulatif_2"]
+
+column_names = ["Date", "Recovered", "Cumulative Recovered", "Imported Case",
+                        "Local Case", "Active Case", "New Case",
+                        "Cumulative Case", "ICU", "Ventilator",
+                        "Death", "Cumulative Death", "URL"]
+
+case_name_mapping = {"pulih": "Recovered", "kumulatif kes yang telah pulih": "Cumulative Recovered",
+                     "kes baharu": "New Case", "jumlah kes positif": "Cumulative Case",
+                     "Unit Rawatan Rapi": "ICU", "pernafasan": "Ventilator",
+                     "kes kematian": "Death", "kumulatif kes kematian": "Cumulative Death",
+                     "jumlah kumulatif kes positif": "Cumulative Case",
+                     "Jumlah kes positif": "Cumulative Case",
+                     # new text format mapping
+                     "Kes sembuh": "Recovered", "kumulatif_0": "Cumulative Recovered",
+                     "kumulatif_1": "Cumulative Case", "Kes import": "Imported Case",
+                     "Kes tempatan": "Local Case", "Kes aktif": "Active Case",
+                     "kumulatif_2": "Cumulative Death"}
+
+default_url = "https://kpkesihatan.com/{format1}/kenyataan-akhbar-kpk-{format2}-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+
+special_dates = ['16-Apr-2020', '13-May-2020', '28-May-2020',
+                 '18-Jun-2020', '16-Jul-2020', '26-Jul-2020']
+special_dt = [datetime.strptime(i, '%d-%b-%Y')
+              for i in special_dates]
+special_urls = ["https://kpkesihatan.com/2020/04/16/kenyataan-akhbar-16-april-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
+                "https://kpkesihatan.com/2020/05/13/kenyataan-akhbar-kpk-13-may-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
+                "https://kpkesihatan.com/2020/05/28/situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
+                "https://kpkesihatan.com/2020/06/18/kenyataan-akhbar-kpk-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
+                "https://kpkesihatan.com/2020/07/16/kenyataan-akhbar-kkm-16-julai-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
+                "https://kpkesihatan.com/2020/07/26/kenyataan-akhbar-kementerian-kesihatan-malaysia-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"]
+
 
 class Scraper:
     def __init__(self, start_date, end_date):
@@ -18,67 +70,16 @@ class Scraper:
 
         self.start_date = start_date
         self.end_date = end_date
-        self.month_translation = {"January": "januari",
-                                  "February": "februari",
-                                  "March": "mac",
-                                  "April": "april",
-                                  "May": "mei",
-                                  "June": "jun",
-                                  "July": "julai",
-                                  "August": "ogos",
-                                  "September": "september",
-                                  "October": "oktober",
-                                  "November": "november",
-                                  "December": "disember"}
-
-        self.cases_to_extract_old = ["pulih", "kumulatif kes yang telah pulih", "kes baharu",
-                                     "jumlah kes positif", "Unit Rawatan Rapi",
-                                     "pernafasan", "kes kematian", "kumulatif kes kematian"]
-
-        self.cases_to_extract_new = ["Kes sembuh", "kumulatif_0", "kes baharu",
-                                     "kumulatif_1", "Kes import", "Kes tempatan",
-                                     "Kes aktif", "Unit Rawatan Rapi",
-                                     "pernafasan", "Kes kematian", "kumulatif_2"]
-
-        self.column_names = ["Date", "Recovered", "Cumulative Recovered", "Imported Case",
-                             "Local Case", "Active Case", "New Case",
-                             "Cumulative Case", "ICU", "Ventilator",
-                             "Death", "Cumulative Death", "URL"]
-
-        self.case_name_mapping = {"pulih": "Recovered", "kumulatif kes yang telah pulih": "Cumulative Recovered",
-                                  "kes baharu": "New Case", "jumlah kes positif": "Cumulative Case",
-                                  "Unit Rawatan Rapi": "ICU", "pernafasan": "Ventilator",
-                                  "kes kematian": "Death", "kumulatif kes kematian": "Cumulative Death",
-                                  "jumlah kumulatif kes positif": "Cumulative Case",
-                                  "Jumlah kes positif": "Cumulative Case",
-                                  # new text format mapping
-                                  "Kes sembuh": "Recovered", "kumulatif_0": "Cumulative Recovered",
-                                  "kumulatif_1": "Cumulative Case", "Kes import": "Imported Case",
-                                  "Kes tempatan": "Local Case", "Kes aktif": "Active Case",
-                                  "kumulatif_2": "Cumulative Death"}
-
-        self.df = pd.DataFrame(columns=self.column_names)
 
         self.start_date_dict = self.create_date_dict(self.start_date)
         self.end_date_dict = self.create_date_dict(self.end_date)
-
         # inclusive of final date
         self.total_days = (self.end_date - self.start_date).days + 1
 
-        self.default_url = "https://kpkesihatan.com/{format1}/kenyataan-akhbar-kpk-{format2}-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-
-        self.special_dates = ['16-Apr-2020', '13-May-2020', '28-May-2020',
-                              '18-Jun-2020', '16-Jul-2020', '26-Jul-2020']
-        self.special_dt = [datetime.strptime(i, '%d-%b-%Y')
-                           for i in self.special_dates]
-        self.special_urls = ["https://kpkesihatan.com/2020/04/16/kenyataan-akhbar-16-april-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
-                             "https://kpkesihatan.com/2020/05/13/kenyataan-akhbar-kpk-13-may-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
-                             "https://kpkesihatan.com/2020/05/28/situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
-                             "https://kpkesihatan.com/2020/06/18/kenyataan-akhbar-kpk-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
-                             "https://kpkesihatan.com/2020/07/16/kenyataan-akhbar-kkm-16-julai-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
-                             "https://kpkesihatan.com/2020/07/26/kenyataan-akhbar-kementerian-kesihatan-malaysia-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"]
-
         self.current_date, self.current_date_dict = self.start_date, self.start_date_dict
+
+        self.df = pd.DataFrame(columns=column_names)
+
         self.new_format_flag = False
 
     def get_matched_number(self, txt_found, numbers_found,
@@ -166,7 +167,7 @@ class Scraper:
     def scrape_data(self, current_url, verbose=0):
         r = requests.get(current_url)
         if r.status_code == 404:
-            raise Exception("Error accessing page!!")
+            raise Exception("Error 404 accessing page!!")
         soup = BeautifulSoup(r.content, "lxml")
         all_text = soup.get_text()
         # Remove all COVID-19 words to avoid getting number 19 accidentally
@@ -183,7 +184,7 @@ class Scraper:
         #     data_dict['Cumulative Death'] = np.nan
         #     txt_to_skip = ('kes kematian', 'kumulatif kes kematian')
 
-        cases_to_extract = self.cases_to_extract_old.copy()
+        cases_to_extract = cases_to_extract_old.copy()
 
         for txt in cases_to_extract:
             self.current_txt = txt
@@ -214,8 +215,8 @@ class Scraper:
                     # sentence = sentenceObj.group()
                     # txt_found = re.search(txt_to_search, sentence)
                     # numbers_found = list(re.finditer(r'[^(]\d+[^)]', sentence))
-                    sentence = str([tags for tags in soup.find_all(
-                        "tr") if txt_to_search in tags.text][0])
+                    sentence = [tags.text for tags in soup.find_all(
+                        "tr") if txt_to_search in tags.text][0]
                     sentence = sentence.replace(',', '')
                     # to remove the digits surrounded by parenthesis
                     #  e.g. (4)
@@ -235,7 +236,7 @@ class Scraper:
                     matched_number = 0
                     if txt == 'kes kematian':
                         txt_to_skip.append('kumulatif kes kematian')
-                        correct_col_name = self.case_name_mapping['kumulatif kes kematian']
+                        correct_col_name = case_name_mapping['kumulatif kes kematian']
                         data_dict[correct_col_name] = np.nan
 
                 elif txt_found and not numbers_found:
@@ -253,7 +254,7 @@ class Scraper:
                 print(f"Error obtaining {txt} !!")
                 raise Exception(f"{e.__class__} occurred.")
 
-            correct_col_name = self.case_name_mapping[txt]
+            correct_col_name = case_name_mapping[txt]
             data_dict[correct_col_name] = matched_number
 
         for col_name in ("Imported Case", "Local Case", "Active Case",):
@@ -276,7 +277,7 @@ class Scraper:
         numbers_found = list(re.finditer('\d+', all_text))
         data_dict = {}
 
-        cases_to_extract = self.cases_to_extract_new.copy()
+        cases_to_extract = cases_to_extract_new.copy()
 
         for txt in cases_to_extract:
             if verbose:
@@ -313,7 +314,7 @@ class Scraper:
 
             matched_number = self.get_matched_number(txt_found, numbers_found,
                                                      verbose=verbose, text_pos=text_pos)
-            correct_col_name = self.case_name_mapping[txt]
+            correct_col_name = case_name_mapping[txt]
             data_dict[correct_col_name] = matched_number
 
         return data_dict
@@ -326,7 +327,7 @@ class Scraper:
         return data_datetime
 
     def create_date_dict(self, dt):
-        month_full = self.month_translation[dt.strftime('%B')]
+        month_full = month_translation[dt.strftime('%B')]
         date_dict = {'format1': dt.strftime(
             '%Y/%m/%d'), 'format2': f'{dt.day}-{month_full}-{dt.year}'}
         return date_dict
@@ -341,10 +342,10 @@ class Scraper:
         for day_number in range(self.total_days):
             print(f"[INFO] Scraping data for {self.current_date.date()} "
                   f"({day_number}/{self.total_days}) ...")
-            current_url = self.default_url.format(**self.current_date_dict)
+            current_url = default_url.format(**self.current_date_dict)
             # print(current_url)
-            if self.current_date in self.special_dt:
-                current_url = self.special_urls[self.special_dt.index(
+            if self.current_date in special_dt:
+                current_url = special_urls[special_dt.index(
                     self.current_date)]
             try:
                 if not self.new_format_flag:
@@ -383,18 +384,19 @@ class Scraper:
         self.df.to_csv(os.path.join("csv_files", filename), index=False)
 
     def test_scrape_first_day(self):
-        current_url = self.default_url.format(**self.start_date_dict)
+        current_url = default_url.format(**self.start_date_dict)
         r = requests.get(current_url)
         if r.status_code == 404:
             raise Exception("Error 404 accessing page!!")
 
         data_dict = self.scrape_data(current_url)
+        print(current_url)
         display(data_dict)
         return data_dict
 
 
-start_date = Scraper.create_datetime(day=17, month=10, year=2020)
-# start_date = Scraper.create_datetime(day=26, month=6, year=2020)
+# start_date = Scraper.create_datetime(day=17, month=10, year=2020)
+start_date = Scraper.create_datetime(day=27, month=3, year=2020)
 end_date = Scraper.create_datetime(day=12, month=12, year=2020)
 
 scraper = Scraper(start_date, end_date)
@@ -406,7 +408,7 @@ data_dict = scraper.test_scrape_first_day()
 
 test_scrape = 0
 if test_scrape:
-    current_url = "https://kpkesihatan.com/2020/10/17/kenyataan-akhbar-kpk-17-oktober-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+    current_url = "https://kpkesihatan.com/2020/03/27/kenyataan-akhbar-kpk-27-mac-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
     r = requests.get(current_url)
     if r.status_code == 404:
         raise Exception("Error 404 accessing page!!")
