@@ -416,6 +416,12 @@ class Scraper:
         self.df_all_new = pd.DataFrame()
         self.df_all_cumu = pd.DataFrame()
 
+        def replace_unk_name(matchObj):
+            # a function used for `re.sub()` to rename column names
+            new_name = ' '.join(['WP', matchObj.group(3)]).strip()
+            # display(new_name)
+            return new_name
+
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
 
@@ -435,6 +441,22 @@ class Scraper:
                 df['Date'] = self.current_date
                 df["URL"] = self.current_url
                 df.set_index('Date', inplace=True)
+
+                # to fixed weird names containing "\xa0"
+                #  or extra spaces in between WP and state name
+                new_col_names = []
+                for col_name in df.columns:
+                    corrected_name = re.sub(r'(WP|W.P.)(\xa0|[\s]+)(\w+)',
+                                            replace_unk_name,
+                                            col_name)
+                    new_col_names.append(corrected_name)
+                df.columns = new_col_names
+
+                # save the order of the column names to make sure they align
+                if day_number == 0:
+                    col_name_order = df.columns.values
+
+                df = df[col_name_order]
 
                 df_new_case = df.iloc[[0], :]
                 df_cumul_case = df.iloc[[1], :]
