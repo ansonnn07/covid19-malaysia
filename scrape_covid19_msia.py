@@ -342,16 +342,19 @@ class Scraper:
         date_dict = self.create_date_dict(data_datetime)
         return data_datetime, date_dict
 
+    def setup_current_url(self, day_number):
+        print(f"[INFO] Scraping data for {self.current_date.date()} "
+              f"({day_number + 1}/{self.total_days}) ...")
+        # print(self.current_url)
+        if self.current_date in special_dt:
+            self.current_url = special_urls[special_dt.index(
+                self.current_date)]
+        else:
+            self.current_url = default_url.format(**self.current_date_dict)
+
     def scrape(self, verbose=0):
         for day_number in range(self.total_days):
-            print(f"[INFO] Scraping data for {self.current_date.date()} "
-                  f"({day_number}/{self.total_days}) ...")
-            # print(self.current_url)
-            if self.current_date in special_dt:
-                self.current_url = special_urls[special_dt.index(
-                    self.current_date)]
-            else:
-                self.current_url = default_url.format(**self.current_date_dict)
+            self.setup_current_url(day_number)
 
             try:
                 # if not self.new_format_flag:
@@ -395,23 +398,63 @@ class Scraper:
                     "csv_files", filename), index=False)
                 print("[ERROR] Problem with", self.current_url)
                 raise Exception(f"Error on {self.current_date.date()}")
-            # print()
-            # break
+
         filename = f"{self.start_date.date()}_{self.end_date.date()}.csv"
         self.df.to_csv(os.path.join("csv_files", filename), index=False)
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
 
+    def tables_to_csv(self):
+        filename = (f"state_new_{self.start_date.date()}"
+                    f"_{self.current_date.date()}.csv")
+        self.df_all_new.to_csv(os.path.join("csv_files", filename))
+
+        filename = (f"state_cumu_{self.start_date.date()}"
+                    f"_{self.current_date.date()}.csv")
+        self.df_all_cumu.to_csv(os.path.join("csv_files", filename))
+
     def scrape_table(self):
-        self.current_url = default_url.format(**self.current_date_dict)
-        r = requests.get(self.current_url)
-        if r.status_code == 404:
-            raise Exception("Error 404 accessing page!!")
+        self.df_all_new = pd.DataFrame()
+        self.df_all_cumu = pd.DataFrame()
 
-        if self.current_date in special_dt:
-            self.current_url = special_urls[special_dt.index(
-                self.current_date)]
+        for day_number in range(self.total_days):
+            self.setup_current_url(day_number)
 
-        df = pd.read_html(r.content, )
+            r = requests.get(self.current_url)
+            if r.status_code == 404:
+                raise Exception("Error 404 accessing page!!")
+
+            try:
+                # extract the last table containing JUMLAH KESELURUHAN to be exact
+                df = pd.read_html(r.content,
+                                  match='JUMLAH KESELURUHAN',
+                                  header=0)[-1]
+
+                # Setup the df into the proper format with one row for each date
+                df = df.set_index('NEGERI')
+                df = df.T
+                df['Date'] = self.current_date
+                df["URL"] = self.current_url
+                df.set_index('Date', inplace=True)
+
+                df_new_case = df.iloc[[0], :]
+                df_cumul_case = df.iloc[[1], :]
+
+                self.df_all_new = self.df_all_new.append(df_new_case)
+                self.df_all_cumu = self.df_all_cumu.append(df_cumul_case)
+
+                self.current_date += timedelta(days=1)
+                self.current_date_dict = self.create_date_dict(
+                    self.current_date)
+
+            except:
+                # save a csv file to check
+                self.tables_to_csv()
+
+                print("[ERROR] Problem with", self.current_url)
+                raise Exception(f"Error on {self.current_date.date()}")
+
+        self.tables_to_csv()
+        print("\n[INFO] CONGRATS! You have scraped until the end date!")
 
     def test_scrape_first_day(self, new_format=0, verbose=0):
         self.current_url = default_url.format(**self.start_date_dict)
@@ -435,22 +478,27 @@ class Scraper:
 
 
 # FIRST DATE TO SCRAPE
-start_date = Scraper.create_datetime(day=27, month=3, year=2020)
-# Final date before new format
-# start_date = Scraper.create_datetime(day=19, month=1, year=2021)
+first_date = Scraper.create_datetime(day=27, month=3, year=2020)
 
 # NEW FORMAT ON 2021-01-20
 # start_date = Scraper.create_datetime(day=20, month=1, year=2021)
-# start_date = Scraper.create_datetime(day=31, month=3, year=2021)
-# end_date = Scraper.create_datetime(day=12, month=2, year=2021)
 
 # FINAL DATE TO SCRAPE SO FAR
-end_date = Scraper.create_datetime(day=15, month=4, year=2021)
+final_date = Scraper.create_datetime(day=15, month=4, year=2021)
 
-scraper = Scraper(start_date, end_date)
+# testing misc dates
+# start_date = Scraper.create_datetime(day=31, month=3, year=2021)
+end_date = Scraper.create_datetime(day=4, month=4, year=2020)
+
+# scraper = Scraper(first_date, end_date)
+# scraper = Scraper(start_date, end_date)
+
+# scrape all days
+scraper = Scraper(first_date, final_date)
 
 verbose = 0
 # scraper.scrape(verbose=verbose)
+scraper.scrape_table()
 
 # data_dict = scraper.test_scrape_first_day(verbose=verbose)
 # data_dict = scraper.test_scrape_first_day(new_format=1, verbose=verbose)
