@@ -1,14 +1,13 @@
-import requests
-import numpy as np
-import pandas as pd
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+import os
 import re
 import sys
-from tqdm import tqdm
-import os
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 from IPython.display import display
-import sys
 
 month_translation = {"January": "januari",
                      "February": "februari",
@@ -27,15 +26,15 @@ cases_to_extract_old = ['(pulih|sembuh)', "kumulatif kes (yang telah pulih|sembu
                         "jumlah kes positif", "Unit Rawatan Rapi",
                         "pernafasan", "kes kematian", "kumulatif kes kematian"]
 
-cases_to_extract_new = ["Kes sembuh", "kumulatif_0", "kes baharu",
-                        "kumulatif_1", "Kes import", "Kes tempatan",
-                        "Kes aktif", "Unit Rawatan Rapi",
-                        "pernafasan", "Kes kematian", "kumulatif_2"]
+cases_to_extract_new = ["sembuh", "kumulatif_sembuh", "baharu",
+                        "kumulatif_baharu", "import", "tempatan",
+                        "aktif", "Unit Rawatan Rapi",
+                        "pernafasan", "kematian", "kumulatif_kematian"]
 
 column_names = ["Date", "Recovered", "Cumulative Recovered", "Imported Case",
-                        "Local Case", "Active Case", "New Case",
-                        "Cumulative Case", "ICU", "Ventilator",
-                        "Death", "Cumulative Death", "URL"]
+                "Local Case", "Active Case", "New Case",
+                "Cumulative Case", "ICU", "Ventilator",
+                "Death", "Cumulative Death", "URL"]
 
 case_name_mapping = {'(pulih|sembuh)': "Recovered",
                      "kumulatif kes (yang telah pulih|sembuh)": "Cumulative Recovered",
@@ -45,10 +44,11 @@ case_name_mapping = {'(pulih|sembuh)': "Recovered",
                      "jumlah kumulatif kes positif": "Cumulative Case",
                      "Jumlah kes positif": "Cumulative Case",
                      # new text format mapping
-                     "Kes sembuh": "Recovered", "kumulatif_0": "Cumulative Recovered",
-                     "kumulatif_1": "Cumulative Case", "Kes import": "Imported Case",
-                     "Kes tempatan": "Local Case", "Kes aktif": "Active Case",
-                     "kumulatif_2": "Cumulative Death"}
+                     "sembuh": "Recovered", "baharu": "New Case",
+                     "kumulatif_sembuh": "Cumulative Recovered",
+                     "kumulatif_baharu": "Cumulative Case", "import": "Imported Case",
+                     "tempatan": "Local Case", "aktif": "Active Case",
+                     "kematian": "Death", "kumulatif_kematian": "Cumulative Death"}
 
 default_url = "https://kpkesihatan.com/{format1}/kenyataan-akhbar-kpk-{format2}-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
 
@@ -84,6 +84,7 @@ class Scraper:
         self.df = pd.DataFrame(columns=column_names)
 
         self.new_format_flag = False
+        self.new_format_date = datetime(2021, 1, 20)
 
     def get_matched_number(self, txt_found, numbers_found,
                            text_pos='first', number_pos='first',
@@ -94,7 +95,6 @@ class Scraper:
         assert number_pos in ('first', 'end')
 
         distance_list = []
-        short_dist_found = False
 
         text_span_idx = 0 if text_pos == 'first' else 1
         number_span_idx = 0 if number_pos == 'first' else 1
@@ -102,12 +102,6 @@ class Scraper:
         for number in numbers_found:
             distance = abs(txt_found.span()[
                            text_span_idx] - number.span()[number_span_idx])
-
-            # Stop the loop if already found shortest distance
-            # if distance < 200:
-            #     short_dist_found = True
-            # if distance > 400 and short_dist_found:
-            #     break
 
             distance_list.append(distance)
 
@@ -135,7 +129,7 @@ class Scraper:
         if self.current_txt == 'kes kematian':
             sentence_list = list(re.finditer(regex_text, all_text))
 
-            # to avoid sentences with strings like "ke-1234"
+            # to avoid sentence with strings like "ke-1234"
             first_sentence = sentence_list[0].group()
             if re.search(r'ke-\d+', first_sentence):
                 # take the next sentence instead
@@ -145,14 +139,15 @@ class Scraper:
             sentenceObj = sentence_list[sentence_idx]
         else:
             # straight away take the first found sentence using `re.search`
-            # sentenceObj = re.search(rf"([^.\n]*?{txt}[^.]*\.)", all_text)
             sentenceObj = re.search(regex_text, all_text)
 
         if not sentenceObj:
             # raise Exception(f"[ERROR] {txt} not found!")
             print(f"[ERROR] {txt} not found! Set to 0 for now.")
-            print("Saving to `self.error_txt` to check later.\n")
-            self.error_txt = f"{txt} - {self.current_date.date()}"
+            print("Saving to 'txt_error.txt' to check later.\n")
+            error_text = f"{txt} - {self.current_date.date()}\n"
+            with open('txt_error.txt', 'a') as f:
+                f.write(error_text)
             return None, None
         else:
             # get the proper `span` (location) of the text in the sentence to
@@ -169,8 +164,25 @@ class Scraper:
     @staticmethod
     def replace_comma_sep_digits(matchObj):
         comma_sep_digits = matchObj.group()
-        new_number = comma_sep_digits.replace(',', '')
+        new_number = comma_sep_digits.replace(',', '').replace(' ', '')
         return new_number
+
+    def find_number_new(self, soup, txt, number_idx):
+        all_case_ul = soup.find_all("ul")[1]
+        for li_tag in all_case_ul:
+            if txt in li_tag.text:
+                sentence = li_tag.text
+
+                if 'tiada' in sentence.lower():
+                    # 0 case found
+                    return 0
+
+                sentence_comma_removed = re.sub(
+                    r"\d+,\s*\d+", self.replace_comma_sep_digits, sentence)
+                numbers_found = re.findall(r'\d+', sentence_comma_removed)
+                matched_number = int(numbers_found[number_idx])
+                return matched_number
+        return 'error'
 
     def scrape_data(self, verbose=0):
         r = requests.get(self.current_url)
@@ -181,14 +193,13 @@ class Scraper:
         # Remove all COVID-19 words to avoid getting number 19 accidentally
         all_text = all_text.replace('COVID-19', '')\
             .replace('covid19', '')
-        all_text = re.sub(r"\d+,\d+", self.replace_comma_sep_digits, all_text)
+        all_text = re.sub(
+            r"\d+,\s*\d+", self.replace_comma_sep_digits, all_text)
 
         data_dict = {}
         txt_to_skip = []
 
-        cases_to_extract = cases_to_extract_old.copy()
-
-        for txt in cases_to_extract:
+        for txt in cases_to_extract_old:
             self.current_txt = txt
 
             if txt_to_skip:
@@ -199,24 +210,24 @@ class Scraper:
                 if verbose:
                     print(f"[INFO] Finding {txt} ...")
 
-                if txt == '(pulih|sembuh)':
-                    if 'Kes sembuh :' in all_text:
-                        print(self.current_url)
-                        print("\n[WARNING] Proceeding to scraping "
-                              "using new text format ...\n")
-                        # not the same text anymore, proceed to new format
-                        return None
-                    else:
-                        txt_found, numbers_found = self.find_text_and_numbers(
-                            txt, all_text)
+                # if txt == '(pulih|sembuh)':
+                #     if 'Kes sembuh :' in all_text:
+                #         print(self.current_url)
+                #         print("\n[WARNING] Proceeding to scraping "
+                #               "using new text format ...\n")
+                #         # not the same text anymore, proceed to new format
+                #         return None
+                #     else:
+                #         txt_found, numbers_found = self.find_text_and_numbers(
+                #             txt, all_text)
 
-                elif txt in ('kes baharu', 'jumlah kes positif'):
+                if txt in ('kes baharu', 'jumlah kes positif'):
                     txt_to_search = "JUMLAH KESELURUHAN"
                     # the correct index for the number
                     number_idx = 1 if txt == "kes baharu" else 2
                     # find all table rows
                     sentence_tag = [tags for tags in soup.find_all(
-                        "tr") if txt_to_search in tags.text][0]
+                        "tr") if txt_to_search in tags.text][-1]
                     # find the table data with the correct index
                     matched_number_str = sentence_tag.find_all("td")[
                         number_idx].text
@@ -233,28 +244,37 @@ class Scraper:
                 if txt in ('kes baharu', 'jumlah kes positif'):
                     matched_number = int(matched_number_str)
                 elif not txt_found and not numbers_found:
-                    print(
-                        f"[INFO] 'tiada' and no digit found in the sentence with '{txt}'")
-                    print("Setting matched_number to 0.")
+                    print("[INFO] 'tiada' and no digit found "
+                          f"in the sentence with '{txt}'")
+
                     matched_number = 0
+
                     if txt == 'kes kematian':
                         txt_to_skip.append('kumulatif kes kematian')
                         correct_col_name = case_name_mapping['kumulatif kes kematian']
-                        data_dict[correct_col_name] = np.nan
+                        data_dict[correct_col_name] = prev_cumu_death
+                    elif txt == 'pernafasan':
+                        # set to same with ICU number
+                        matched_number = data_dict['ICU']
 
                 elif txt_found and not numbers_found:
-                    print("[WARNING] 'tiada' is not found but no digit"
+                    print("[WARNING] 'tiada' is not found but no digit "
                           f"is found in the sentence with '{txt}'\n")
                     matched_number = 0
                 else:
                     matched_number = self.get_matched_number(txt_found, numbers_found,
                                                              verbose=verbose)
 
+                # save the cumulative death to use it for the next row
+                #  where there is no new death case
+                if txt == 'kumulatif kes kematian':
+                    prev_cumu_death = matched_number
+
                 if verbose:
                     print(f"Text found: {txt_found}\n")
 
             except Exception as e:
-                print(f"Error obtaining {txt} !!")
+                print(f"\nError obtaining {txt} !!")
                 raise Exception(f"{e.__class__} occurred.")
 
             correct_col_name = case_name_mapping[txt]
@@ -265,58 +285,39 @@ class Scraper:
 
         return data_dict
 
-    def scrape_data_2(self, verbose=0):
+    def scrape_data_new(self, verbose=0):
         r = requests.get(self.current_url)
         if r.status_code == 404:
             raise Exception("Error 404 accessing page!!")
         soup = BeautifulSoup(r.content, "lxml")
 
-        all_text = soup.get_text()
-        # Remove all COVID-19 words to avoid getting number 19 accidentally
-        all_text = all_text.replace('COVID-19', '')\
-            .replace('covid19', '')
-
-        all_text = re.sub(r"\d+,\d+", self.replace_comma_sep_digits, all_text)
-        numbers_found = list(re.finditer('\d+', all_text))
         data_dict = {}
 
-        cases_to_extract = cases_to_extract_new.copy()
-
-        for txt in cases_to_extract:
+        for txt in cases_to_extract_new:
             if verbose:
                 print(f"[INFO] Finding {txt} ...")
 
-            if 'kumulatif' in txt:
-                text_pos = 'first'
-                number_pos = 'end'
-                # get the specific position of the text for cumulative case
-                text_idx = int(txt.split("_")[1])
-                cumulative_text = 'kes kumulatif'
-                try:
-                    txt_found = list(re.finditer(cumulative_text, all_text))[
-                        text_idx]
-                except Exception as e:
-                    print(f"Error obtaining {cumulative_text} !!")
-                    raise Exception(f"{e.__class__} occurred.")
-            else:
-                text_pos = 'end'
-                number_pos = 'first'
-                try:
-                    txt_found = list(re.finditer(txt, all_text))[0]
-                except Exception as e:
-                    print(f"Error obtaining {txt} !!")
-                    raise Exception(f"{e.__class__} occurred.")
+            try:
+                if 'kumulatif' in txt:
+                    number_idx = 1
+                    # get the name to search: one of ('sembuh', 'baharu', 'kematian')
+                    txt_to_search = txt.split("_")[1]
+                    matched_number = self.find_number_new(
+                        soup, txt_to_search, number_idx)
+                else:
+                    number_idx = 0
+                    matched_number = self.find_number_new(
+                        soup, txt, number_idx)
+                    # li_text_list = [li_tag.text for li_tag in all_case_ul if txt in li_tag.text]
+            except Exception as e:
+                print(f"\nError obtaining {txt} !!")
+                raise Exception(f"{e.__class__} occurred.")
 
-            if txt in ("JUMLAH KESELURUHAN", "kumulatif kes kematian"):
-                text_pos = 'end'
-            else:
-                text_pos = 'first'
+            if not matched_number:
+                print(f"[INFO] 'tiada' is found, {txt} = 0")
+            elif matched_number == 'error':
+                raise Exception(f"[ERROR] Cannot find '{txt}'!")
 
-            if verbose:
-                print(f"Text found: {txt_found}\n")
-
-            matched_number = self.get_matched_number(txt_found, numbers_found,
-                                                     verbose=verbose, text_pos=text_pos)
             correct_col_name = case_name_mapping[txt]
             data_dict[correct_col_name] = matched_number
 
@@ -345,23 +346,37 @@ class Scraper:
         for day_number in range(self.total_days):
             print(f"[INFO] Scraping data for {self.current_date.date()} "
                   f"({day_number}/{self.total_days}) ...")
-            self.current_url = default_url.format(**self.current_date_dict)
             # print(self.current_url)
             if self.current_date in special_dt:
                 self.current_url = special_urls[special_dt.index(
                     self.current_date)]
-            try:
-                if not self.new_format_flag:
-                    # still in old text format, scrape using old method
-                    data_dict = self.scrape_data(verbose=0)
+            else:
+                self.current_url = default_url.format(**self.current_date_dict)
 
-                if not data_dict:
+            try:
+                # if not self.new_format_flag:
+                #     # still in old text format, scrape using old method
+                #     data_dict = self.scrape_data(verbose=0)
+
+                # if not data_dict:
+                #     print("[ATTENTION] USING NEW text format "
+                #           f"on {self.current_date.date()}.")
+                #     sys.exit("Stopping to modify the new format for now")
+                #     # using new text format method
+                #     self.new_format_flag = True
+                #     data_dict = self.scrape_data_new(verbose=verbose)
+
+                if self.current_date == self.new_format_date:
                     print("[ATTENTION] USING NEW text format "
-                          f"on {self.current_date.date()}.")
-                    sys.exit("Stopping to modify the new format for now")
-                    # using new text format method
+                          f"starting from {self.current_date.date()}.")
                     self.new_format_flag = True
-                    data_dict = self.scrape_data_2(verbose=verbose)
+
+                if self.new_format_flag:
+                    # using new text scraping format method
+                    data_dict = self.scrape_data_new(verbose=0)
+                else:
+                    # still in old text format, scrape using old method
+                    data_dict = self.scrape_data(verbose=verbose)
 
                 # print(data_dict)
 
@@ -386,31 +401,48 @@ class Scraper:
         self.df.to_csv(os.path.join("csv_files", filename), index=False)
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
 
-    def test_scrape_first_day(self, verbose=0):
+    def scrape_table(self):
+        self.current_url = default_url.format(**self.current_date_dict)
+        r = requests.get(self.current_url)
+        if r.status_code == 404:
+            raise Exception("Error 404 accessing page!!")
+
+        if self.current_date in special_dt:
+            self.current_url = special_urls[special_dt.index(
+                self.current_date)]
+
+        df = pd.read_html(r.content, )
+
+    def test_scrape_first_day(self, new_format=0, verbose=0):
         self.current_url = default_url.format(**self.start_date_dict)
         r = requests.get(self.current_url)
         if r.status_code == 404:
             raise Exception("Error 404 accessing page!!")
 
-        data_dict = self.scrape_data(verbose=verbose)
+        if not new_format:
+            data_dict = self.scrape_data(verbose=verbose)
+        else:
+            data_dict = self.scrape_data_new(verbose=verbose)
         print(self.current_url)
         display(data_dict)
         return data_dict
 
     def continue_scraping(self, verbose=0):
+        self.start_date = self.current_date
+        self.start_date_dict = self.current_date
         self.total_days = (self.end_date - self.current_date).days + 1
         self.scrape(verbose=verbose)
 
 
 # FIRST DATE TO SCRAPE
-# start_date = Scraper.create_datetime(day=27, month=3, year=2020)
+start_date = Scraper.create_datetime(day=27, month=3, year=2020)
 # Final date before new format
-start_date = Scraper.create_datetime(day=19, month=1, year=2021)
+# start_date = Scraper.create_datetime(day=19, month=1, year=2021)
 
 # NEW FORMAT ON 2021-01-20
 # start_date = Scraper.create_datetime(day=20, month=1, year=2021)
-start_date = Scraper.create_datetime(day=20, month=1, year=2021)
-end_date = Scraper.create_datetime(day=12, month=2, year=2021)
+# start_date = Scraper.create_datetime(day=31, month=3, year=2021)
+# end_date = Scraper.create_datetime(day=12, month=2, year=2021)
 
 # FINAL DATE TO SCRAPE SO FAR
 end_date = Scraper.create_datetime(day=15, month=4, year=2021)
@@ -420,14 +452,15 @@ scraper = Scraper(start_date, end_date)
 verbose = 0
 # scraper.scrape(verbose=verbose)
 
-data_dict = scraper.test_scrape_first_day(verbose=verbose)
+# data_dict = scraper.test_scrape_first_day(verbose=verbose)
+# data_dict = scraper.test_scrape_first_day(new_format=1, verbose=verbose)
 
 # scraper.continue_scraping(verbose=verbose)
 
 test_scrape = 0
 if test_scrape:
     # current_url = "https://kpkesihatan.com/2021/04/17/kenyataan-akhbar-kpk-17-april-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    current_url = "https://kpkesihatan.com/2021/04/17/kenyataan-akhbar-kpk-17-april-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+    current_url = "https://kpkesihatan.com/2020/04/01/kenyataan-akhbar-kpk-1-april-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
     # current_url = "https://kpkesihatan.com/2020/03/27/kenyataan-akhbar-kpk-27-mac-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
     r = requests.get(current_url)
     if r.status_code == 404:
@@ -440,19 +473,13 @@ if test_scrape:
 
     def replace_comma_sep_digits(matchObj):
         comma_sep_digits = matchObj.group()
-        new_number = comma_sep_digits.replace(',', '')
+        new_number = comma_sep_digits.replace(',', '').replace(' ', '')
         return new_number
-
-    # all_text = re.sub(r'\d+,')
-
-    # if 'Kes sembuh :' in all_text:
-    #     print(current_url)
-    #     print('\n[WARNING] Proceeding to scraping using new text format ...\n')
 
     test_text = 'Sehingga kini, terdapat 12,913\xa0kes\xa0positif  yang sedang dirawat di Unit Rawatan Rapi (ICU),\xa0di mana 30 kes memerlukan bantuan pernafasan.'
 
     test_text = re.sub(
-        r"\d+,\d+", repl=replace_comma_sep_digits, string=test_text)
+        r"\d+,\s*\d+", repl=replace_comma_sep_digits, string=test_text)
 
     # txt = 'Unit Rawatan Rapi'
     # # sentence = re.search(rf"([^.\n]*{txt}[^.]*[.]+)", test_text).group()
@@ -466,7 +493,7 @@ if test_scrape:
     # the correct index for the number
     number_idx = 1 if test_txt == "kes baharu" else 2
     sentence_tag = [tags for tags in soup.find_all(
-        "tr") if txt_to_search in tags.text][0]
+        "tr") if txt_to_search in tags.text][-1]
     matched_number_str = sentence_tag.find_all("td")[number_idx].text
     matched_number_str = matched_number_str.replace(',', '').replace(' ', '')
     matched_number_str = re.sub(r'\(.+\)', ' ', matched_number_str)
@@ -480,19 +507,50 @@ if test_scrape_new:
     if r.status_code == 404:
         raise Exception("Error 404 accessing page!!")
     soup = BeautifulSoup(r.content, "lxml")
-    all_text = soup.get_text()
 
     def replace_comma_sep_digits(matchObj):
         comma_sep_digits = matchObj.group()
         new_number = comma_sep_digits.replace(',', '').replace(' ', '')
         return new_number
 
-    all_case_ul = soup.find_all("ul")[1]
-    li_text_list = [li_tag.text for li_tag in all_case_ul]
-    li_text_list = [re.sub(r"\d+,\d+", replace_comma_sep_digits, txt)
-                    for txt in li_text_list]
+    def find_number_new(soup, txt, number_idx):
+        all_case_ul = soup.find_all("ul")[1]
+        for li_tag in all_case_ul:
+            if txt in li_tag.text:
+                sentence = li_tag.text
+                sentence_comma_removed = re.sub(
+                    r"\d+,\s*\d+", replace_comma_sep_digits, sentence)
+                numbers_found = re.findall(r'\d+', sentence_comma_removed)
+                matched_number = int(numbers_found[number_idx])
+                return matched_number
+        return None
 
-    test_text = 'Sehingga kini, terdapat 12,913\xa0kes\xa0positif  yang sedang dirawat di Unit Rawatan Rapi (ICU),\xa0di mana 30 kes memerlukan bantuan pernafasan.'
+    data_dict = {}
 
-    test_text = re.sub(
-        r"\d+,\d+", repl=replace_comma_sep_digits, string=test_text)
+    for txt in cases_to_extract_new:
+        if verbose:
+            print(f"[INFO] Finding {txt} ...")
+
+        try:
+            if 'kumulatif' in txt:
+                number_idx = 1
+                # get the name to search: one of ('sembuh', 'baharu', 'kematian')
+                txt_to_search = txt.split("_")[1]
+                matched_number = find_number_new(
+                    soup, txt_to_search, number_idx)
+            else:
+                number_idx = 0
+                matched_number = find_number_new(soup, txt, number_idx)
+                # li_text_list = [li_tag.text for li_tag in all_case_ul if txt in li_tag.text]
+        except Exception as e:
+            print(f"\nError obtaining {txt} !!")
+            raise Exception(f"{e.__class__} occurred.")
+
+        if not matched_number:
+            raise Exception(f"[ERROR] No number found for {txt}")
+
+        correct_col_name = case_name_mapping[txt]
+        data_dict[correct_col_name] = matched_number
+
+    print(current_url)
+    display(data_dict)
