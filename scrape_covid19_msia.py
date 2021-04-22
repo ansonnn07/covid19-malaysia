@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -353,6 +354,7 @@ class Scraper:
             self.current_url = default_url.format(**self.current_date_dict)
 
     def scrape(self, verbose=0):
+        start_time = time.time()
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
 
@@ -402,6 +404,8 @@ class Scraper:
         filename = f"{self.start_date.date()}_{self.end_date.date()}.csv"
         self.df.to_csv(os.path.join("csv_files", filename), index=False)
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
+        total_time = time.time() - start_time
+        print(f"Total time elapsed: {total_time:.2f} seconds")
 
     def tables_to_csv(self):
         filename = (f"state_new_{self.start_date.date()}"
@@ -413,14 +417,13 @@ class Scraper:
         self.df_all_cumu.to_csv(os.path.join("csv_files", filename))
 
     def scrape_table(self):
+        start_time = time.time()
         self.df_all_new = pd.DataFrame()
         self.df_all_cumu = pd.DataFrame()
 
         def replace_unk_name(matchObj):
             # a function used for `re.sub()` to rename column names
-            new_name = ' '.join(['WP', matchObj.group(3)]).strip()
-            # display(new_name)
-            return new_name
+            return ' '.join(['WP', matchObj.group(3)]).strip()
 
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
@@ -442,8 +445,8 @@ class Scraper:
                 df["URL"] = self.current_url
                 df.set_index('Date', inplace=True)
 
-                # to fixed weird names containing "\xa0"
-                #  or extra spaces in between WP and state name
+                # to fix weird column names containing "\xa0"
+                #  or extra spaces in between "WP" and state name
                 new_col_names = []
                 for col_name in df.columns:
                     corrected_name = re.sub(r'(WP|W.P.)(\xa0|[\s]+)(\w+)',
@@ -477,6 +480,76 @@ class Scraper:
 
         self.tables_to_csv()
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
+        total_time = time.time() - start_time
+        print(f"Total time elapsed: {total_time:.2f} seconds")
+
+    def scrape_table_2(self):
+        """
+        Second method to scrape table faster
+        and process them in the end, 
+        but cannot add URL column easily.
+        """
+
+        start_time = time.time()
+
+        def finalize_df():
+            # Replace wrong names
+            self.state_df.State = self.state_df.State.str.replace(
+                '\xa0', ' ').str.replace('.', '', regex=False)
+
+            new_df = self.state_df.pivot_table(index='Date',
+                                               columns='State',
+                                               values='New Case',
+                                               aggfunc='max')
+
+            cumu_df = self.state_df.pivot_table(index='Date',
+                                                columns='State',
+                                                values='Cumulative Case',
+                                                aggfunc='max')
+
+            filename = (f"2_state_new_{self.start_date.date()}"
+                        f"_{self.current_date.date()}.csv")
+            new_df.to_csv(os.path.join("csv_files", filename))
+
+            filename = (f"2_state_cumu_{self.start_date.date()}"
+                        f"_{self.current_date.date()}.csv")
+            cumu_df.to_csv(os.path.join("csv_files", filename))
+
+        state_column_names = ['State', 'New Case', 'Cumulative Case']
+        self.state_df = pd.DataFrame(columns=state_column_names)
+
+        for day_number in range(self.total_days):
+            self.setup_current_url(day_number)
+
+            r = requests.get(self.current_url)
+            if r.status_code == 404:
+                raise Exception("Error 404 accessing page!!")
+
+            try:
+                # extract the last table containing JUMLAH KESELURUHAN to be exact
+                df = pd.read_html(r.content,
+                                  match='JUMLAH KESELURUHAN',
+                                  header=0)[-1]
+                df.columns = state_column_names
+                df['Date'] = self.current_date
+
+                self.state_df = self.state_df.append(df)
+
+                self.current_date += timedelta(days=1)
+                self.current_date_dict = self.create_date_dict(
+                    self.current_date)
+            except:
+                # save a csv file to check
+                # self.tables_to_csv()
+                print("[ERROR] Problem with", self.current_url)
+                raise Exception(f"Error on {self.current_date.date()}")
+
+        # handle and save the df
+        finalize_df()
+        print("\n[INFO] CONGRATS! You have scraped until the end date!")
+        total_time = time.time() - start_time
+        # 270 seconds
+        print(f"Total time elapsed: {total_time:.2f} seconds")
 
     def test_scrape_first_day(self, new_format=0, verbose=0):
         self.current_url = default_url.format(**self.start_date_dict)
@@ -520,7 +593,8 @@ scraper = Scraper(first_date, final_date)
 
 verbose = 0
 # scraper.scrape(verbose=verbose)
-scraper.scrape_table()
+# scraper.scrape_table()
+scraper.scrape_table_2()
 
 # data_dict = scraper.test_scrape_first_day(verbose=verbose)
 # data_dict = scraper.test_scrape_first_day(new_format=1, verbose=verbose)
