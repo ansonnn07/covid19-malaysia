@@ -19,9 +19,9 @@ month_translation = {"January": "januari",
                      "July": "julai",
                      "August": "ogos",
                      "September": "september",
-                                  "October": "oktober",
-                                  "November": "november",
-                                  "December": "disember"}
+                     "October": "oktober",
+                     "November": "november",
+                     "December": "disember"}
 
 cases_to_extract_old = ['(pulih|sembuh)', "kumulatif kes (yang telah pulih|sembuh)", "kes baharu",
                         "jumlah kes positif", "Unit Rawatan Rapi",
@@ -359,6 +359,7 @@ class Scraper:
             self.setup_current_url(day_number)
 
             try:
+                # This were used to detect which date the new text format started
                 # if not self.new_format_flag:
                 #     # still in old text format, scrape using old method
                 #     data_dict = self.scrape_data(verbose=0)
@@ -421,9 +422,9 @@ class Scraper:
         self.df_all_new = pd.DataFrame()
         self.df_all_cumu = pd.DataFrame()
 
-        def replace_unk_name(matchObj):
-            # a function used for `re.sub()` to rename column names
-            return ' '.join(['WP', matchObj.group(3)]).strip()
+        # def replace_unk_name(matchObj):
+        #     # a function used for `re.sub()` to rename column names
+        #     return ' '.join(['WP', matchObj.group(3)]).strip()
 
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
@@ -447,13 +448,17 @@ class Scraper:
 
                 # to fix weird column names containing "\xa0"
                 #  or extra spaces in between "WP" and state name
-                new_col_names = []
-                for col_name in df.columns:
-                    corrected_name = re.sub(r'(WP|W.P.)(\xa0|[\s]+)(\w+)',
-                                            replace_unk_name,
-                                            col_name)
-                    new_col_names.append(corrected_name)
-                df.columns = new_col_names
+                # new_col_names = []
+                # for col_name in df.columns:
+                #     corrected_name = re.sub(r'(WP|W.P.)(\xa0|[\s]+)(\w+)',
+                #                             replace_unk_name,
+                #                             col_name)
+                #     new_col_names.append(corrected_name)
+                # df.columns = new_col_names
+
+                # simpler method
+                df.columns = df.columns.str.replace(
+                    '\xa0', ' ').str.replace('.', '', regex=False)
 
                 # save the order of the column names to make sure they align
                 if day_number == 0:
