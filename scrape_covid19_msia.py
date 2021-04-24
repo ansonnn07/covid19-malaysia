@@ -253,7 +253,7 @@ class Scraper:
                     if txt == 'kes kematian':
                         txt_to_skip.append('kumulatif kes kematian')
                         correct_col_name = case_name_mapping['kumulatif kes kematian']
-                        data_dict[correct_col_name] = prev_cumu_death
+                        data_dict[correct_col_name] = self.prev_cumu_death
                     elif txt == 'pernafasan':
                         # set to same with ICU number
                         matched_number = data_dict['ICU']
@@ -269,7 +269,7 @@ class Scraper:
                 # save the cumulative death to use it for the next row
                 #  where there is no new death case
                 if txt == 'kumulatif kes kematian':
-                    prev_cumu_death = matched_number
+                    self.prev_cumu_death = matched_number
 
                 if verbose:
                     print(f"Text found: {txt_found}\n")
@@ -353,7 +353,7 @@ class Scraper:
         else:
             self.current_url = default_url.format(**self.current_date_dict)
 
-    def scrape(self, verbose=0):
+    def scrape_all(self, verbose=0):
         start_time = time.time()
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
@@ -406,6 +406,7 @@ class Scraper:
         self.df.to_csv(os.path.join("csv_files", filename), index=False)
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
         total_time = time.time() - start_time
+        # 285 seconds
         print(f"Total time elapsed: {total_time:.2f} seconds")
 
     def tables_to_csv(self):
@@ -597,9 +598,9 @@ end_date = Scraper.create_datetime(day=4, month=4, year=2020)
 scraper = Scraper(first_date, final_date)
 
 verbose = 0
-# scraper.scrape(verbose=verbose)
+scraper.scrape_all(verbose=verbose)
 # scraper.scrape_table()
-scraper.scrape_table_2()
+# scraper.scrape_table_2()
 
 # data_dict = scraper.test_scrape_first_day(verbose=verbose)
 # data_dict = scraper.test_scrape_first_day(new_format=1, verbose=verbose)
