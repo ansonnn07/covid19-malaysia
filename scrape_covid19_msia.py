@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -86,6 +87,37 @@ class Scraper:
 
         self.new_format_flag = False
         self.new_format_date = datetime(2021, 1, 20)
+
+        self.prev_cumu_death = None
+
+    @staticmethod
+    def create_datetime(day, month, year):
+        data_date = '-'.join([str(day).zfill(2),
+                             str(month).zfill(2), str(year)])
+        data_datetime = datetime.strptime(data_date, '%d-%m-%Y')
+        return data_datetime
+
+    def create_date_dict(self, dt):
+        month_full = month_translation[dt.strftime('%B')]
+        date_dict = {'format1': dt.strftime(
+            '%Y/%m/%d'), 'format2': f'{dt.day}-{month_full}-{dt.year}'}
+        return date_dict
+
+    @staticmethod
+    def create_datetime_and_dict(self, day, month, year):
+        data_datetime = self.create_datetime(day, month, year)
+        date_dict = self.create_date_dict(data_datetime)
+        return data_datetime, date_dict
+
+    def setup_current_url(self, day_number):
+        print(f"[INFO] Scraping data for {self.current_date.date()} "
+              f"({day_number + 1}/{self.total_days}) ...")
+        # print(self.current_url)
+        if self.current_date in special_dt:
+            self.current_url = special_urls[special_dt.index(
+                self.current_date)]
+        else:
+            self.current_url = default_url.format(**self.current_date_dict)
 
     def get_matched_number(self, txt_found, numbers_found,
                            text_pos='first', number_pos='first',
@@ -172,7 +204,7 @@ class Scraper:
         all_case_ul = soup.find_all("ul")[1]
         for li_tag in all_case_ul:
             if txt in li_tag.text:
-                sentence = li_tag.text
+                sentence = unicodedata.normalize('NFKD', li_tag.text)
 
                 if 'tiada' in sentence.lower():
                     # 0 case found
@@ -194,8 +226,13 @@ class Scraper:
         # Remove all COVID-19 words to avoid getting number 19 accidentally
         all_text = all_text.replace('COVID-19', '')\
             .replace('covid19', '')
+        # to remove unwanted strings like '\xa0'
+        all_text = unicodedata.normalize('NFKD', all_text)
         all_text = re.sub(
             r"\d+,\s*\d+", self.replace_comma_sep_digits, all_text)
+
+        if self.current_date == datetime(2020, 10, 1):
+            all_text = all_text.replace(' 5 angka, ', ' ')
 
         data_dict = {}
         txt_to_skip = []
@@ -221,6 +258,13 @@ class Scraper:
                 #     else:
                 #         txt_found, numbers_found = self.find_text_and_numbers(
                 #             txt, all_text)
+
+                if self.current_date == datetime(2020, 11, 2)\
+                        and txt == "kumulatif kes (yang telah pulih|sembuh)":
+                    matched_number = 23120
+                    correct_col_name = case_name_mapping[txt]
+                    data_dict[correct_col_name] = matched_number
+                    continue
 
                 if txt in ('kes baharu', 'jumlah kes positif'):
                     txt_to_search = "JUMLAH KESELURUHAN"
@@ -253,7 +297,9 @@ class Scraper:
                     if txt == 'kes kematian':
                         txt_to_skip.append('kumulatif kes kematian')
                         correct_col_name = case_name_mapping['kumulatif kes kematian']
-                        data_dict[correct_col_name] = self.prev_cumu_death
+                        # to avoid issue with not obtaining the attribute yet
+                        data_dict[correct_col_name] = self.prev_cumu_death or 0
+
                     elif txt == 'pernafasan':
                         # set to same with ICU number
                         matched_number = data_dict['ICU']
@@ -324,35 +370,6 @@ class Scraper:
 
         return data_dict
 
-    @staticmethod
-    def create_datetime(day, month, year):
-        data_date = '-'.join([str(day).zfill(2),
-                             str(month).zfill(2), str(year)])
-        data_datetime = datetime.strptime(data_date, '%d-%m-%Y')
-        return data_datetime
-
-    def create_date_dict(self, dt):
-        month_full = month_translation[dt.strftime('%B')]
-        date_dict = {'format1': dt.strftime(
-            '%Y/%m/%d'), 'format2': f'{dt.day}-{month_full}-{dt.year}'}
-        return date_dict
-
-    @staticmethod
-    def create_datetime_and_dict(self, day, month, year):
-        data_datetime = self.create_datetime(day, month, year)
-        date_dict = self.create_date_dict(data_datetime)
-        return data_datetime, date_dict
-
-    def setup_current_url(self, day_number):
-        print(f"[INFO] Scraping data for {self.current_date.date()} "
-              f"({day_number + 1}/{self.total_days}) ...")
-        # print(self.current_url)
-        if self.current_date in special_dt:
-            self.current_url = special_urls[special_dt.index(
-                self.current_date)]
-        else:
-            self.current_url = default_url.format(**self.current_date_dict)
-
     def scrape_all(self, verbose=0):
         start_time = time.time()
         for day_number in range(self.total_days):
@@ -362,7 +379,7 @@ class Scraper:
                 # This were used to detect which date the new text format started
                 # if not self.new_format_flag:
                 #     # still in old text format, scrape using old method
-                #     data_dict = self.scrape_data(verbose=0)
+                #     data_dict = self.scrape_data(verbose=verbose)
 
                 # if not data_dict:
                 #     print("[ATTENTION] USING NEW text format "
@@ -379,7 +396,7 @@ class Scraper:
 
                 if self.new_format_flag:
                     # using new text scraping format method
-                    data_dict = self.scrape_data_new(verbose=0)
+                    data_dict = self.scrape_data_new(verbose=verbose)
                 else:
                     # still in old text format, scrape using old method
                     data_dict = self.scrape_data(verbose=verbose)
@@ -582,20 +599,21 @@ class Scraper:
 first_date = Scraper.create_datetime(day=27, month=3, year=2020)
 
 # NEW FORMAT ON 2021-01-20
-# start_date = Scraper.create_datetime(day=20, month=1, year=2021)
+start_date = Scraper.create_datetime(day=1, month=10, year=2020)
 
 # FINAL DATE TO SCRAPE SO FAR
 final_date = Scraper.create_datetime(day=15, month=4, year=2021)
 
 # testing misc dates
 # start_date = Scraper.create_datetime(day=31, month=3, year=2021)
-end_date = Scraper.create_datetime(day=4, month=4, year=2020)
+end_date = Scraper.create_datetime(day=5, month=11, year=2020)
 
 # scraper = Scraper(first_date, end_date)
-# scraper = Scraper(start_date, end_date)
+scraper = Scraper(start_date, end_date)
+# scraper = Scraper(start_date, final_date)
 
 # scrape all days
-scraper = Scraper(first_date, final_date)
+# scraper = Scraper(first_date, final_date)
 
 verbose = 0
 scraper.scrape_all(verbose=verbose)
@@ -610,32 +628,33 @@ scraper.scrape_all(verbose=verbose)
 test_scrape = 0
 if test_scrape:
     # current_url = "https://kpkesihatan.com/2021/04/17/kenyataan-akhbar-kpk-17-april-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    current_url = "https://kpkesihatan.com/2020/04/01/kenyataan-akhbar-kpk-1-april-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+    current_url = "https://kpkesihatan.com/2020/10/01/kenyataan-akhbar-kpk-1-oktober-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
     # current_url = "https://kpkesihatan.com/2020/03/27/kenyataan-akhbar-kpk-27-mac-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
     r = requests.get(current_url)
     if r.status_code == 404:
         raise Exception("Error 404 accessing page!!")
     soup = BeautifulSoup(r.content, "lxml")
 
-    all_text = soup.get_text()
-    all_text = all_text.replace('COVID-19', '')\
-        .replace('covid19', '')
-
     def replace_comma_sep_digits(matchObj):
         comma_sep_digits = matchObj.group()
         new_number = comma_sep_digits.replace(',', '').replace(' ', '')
         return new_number
 
-    test_text = 'Sehingga kini, terdapat 12,913\xa0kes\xa0positif  yang sedang dirawat di Unit Rawatan Rapi (ICU),\xa0di mana 30 kes memerlukan bantuan pernafasan.'
+    all_text = soup.get_text()
+    all_text = all_text.replace('COVID-19', '')\
+        .replace('covid19', '').replace('\xa0', ' ')
+    all_text = unicodedata.normalize('NFKD', all_text)
+    all_text = re.sub(r"\d+,\s*\d+", replace_comma_sep_digits, all_text)
 
-    test_text = re.sub(
-        r"\d+,\s*\d+", repl=replace_comma_sep_digits, string=test_text)
+    current_date = Scraper.create_datetime(1, 10, 2020)
+    if current_date == datetime(2020, 10, 1):
+        all_text = all_text.replace(' 5 angka, ', ' ')
 
-    # txt = 'Unit Rawatan Rapi'
-    # # sentence = re.search(rf"([^.\n]*{txt}[^.]*[.]+)", test_text).group()
-    # sentence = re.search(rf"([^.,\n]*{txt}[^.,]*[.,]+)", test_text).group()
-    # txt_found = re.search(txt, sentence)
-    # numbers_found = list(re.finditer(r"\d+,*\d+", sentence))
+    txt = 'kumulatif kes yang telah pulih'
+    # sentence = re.search(rf"([^.\n]*{txt}[^.]*[.]+)", test_text).group()
+    sentence = re.search(rf"([^.,\n]*{txt}[^.,]*[.,]+)", all_text).group()
+    txt_found = re.search(txt, sentence)
+    numbers_found = list(re.finditer(r"\d+,*\d+", sentence))
 
     txt_to_search = "JUMLAH KESELURUHAN"
     # txt = "kes baharu"
