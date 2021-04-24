@@ -411,11 +411,11 @@ class Scraper:
 
     def tables_to_csv(self):
         filename = (f"state_new_{self.start_date.date()}"
-                    f"_{self.current_date.date()}.csv")
+                    f"_{self.end_date.date()}.csv")
         self.df_all_new.to_csv(os.path.join("csv_files", filename))
 
         filename = (f"state_cumu_{self.start_date.date()}"
-                    f"_{self.current_date.date()}.csv")
+                    f"_{self.end_date.date()}.csv")
         self.df_all_cumu.to_csv(os.path.join("csv_files", filename))
 
     def scrape_table(self):
@@ -514,11 +514,11 @@ class Scraper:
                                                 aggfunc='max')
 
             filename = (f"2_state_new_{self.start_date.date()}"
-                        f"_{self.current_date.date()}.csv")
+                        f"_{self.end_date.date()}.csv")
             new_df.to_csv(os.path.join("csv_files", filename))
 
             filename = (f"2_state_cumu_{self.start_date.date()}"
-                        f"_{self.current_date.date()}.csv")
+                        f"_{self.end_date.date()}.csv")
             cumu_df.to_csv(os.path.join("csv_files", filename))
 
         state_column_names = ['State', 'New Case', 'Cumulative Case']
