@@ -1,0 +1,18 @@
+[
+  {"id":"01","Name":"WP KUALA LUMPUR","geometry":{"type":"MultiPolygon","coordinates":[["kulsgr"]]}},
+  {"id":"02","Name":"WP LABUAN","geometry":{"type":"MultiPolygon","coordinates":[["lbnocn"]]}},
+  {"id":"03","Name":"WP PUTRAJAYA","geometry":{"type":"MultiPolygon","coordinates":[["pjysgr"]]}},
+  {"id":"04","Name":"JOHOR","geometry":{"type":"MultiPolygon","coordinates":[["jhrocn,jhrmlk,jhrnsn,jhrphg"]]}},
+  {"id":"05","Name":"KEDAH","geometry":{"type":"MultiPolygon","coordinates":[["kdhocn,kdhpls,kdhtha,kdhprk,kdhpng"]]}},
+  {"id":"06","Name":"KELANTAN","geometry":{"type":"MultiPolygon","coordinates":[["ktnocn,ktntrg,ktnphg,ktnprk,ktntha"]]}},
+  {"id":"07","Name":"MELAKA","geometry":{"type":"MultiPolygon","coordinates":[["mlkocn,mlknsn,mlkjhr"]]}},
+  {"id":"08","Name":"NEGERI SEMBILAN","geometry":{"type":"MultiPolygon","coordinates":[["nsnocn,nsnsgr,nsnphg,nsnjhr,nsnmlk"]]}},
+  {"id":"09","Name":"PAHANG","geometry":{"type":"MultiPolygon","coordinates":[["phgocn,phgjhr,phgnsn,phgsgr,phgprk,phgktn,phgtrg"]]}},
+  {"id":"10","Name":"PENANG","geometry":{"type":"MultiPolygon","coordinates":[["pngocn,pngkdh,pngprk"],["pngocn2"]]}},
+  {"id":"11","Name":"PERAK","geometry":{"type":"MultiPolygon","coordinates":[["prkocn,prkpng,prkkdh,prktha,prkktn,prkphg,prksgr"]]}},
+  {"id":"12","Name":"PERLIS","geometry":{"type":"MultiPolygon","coordinates":[["plsocn,plstha,plskdh"]]}},
+  {"id":"13","Name":"SABAH","geometry":{"type":"MultiPolygon","coordinates":[["sbhocn,sbhind,sbhsrw"]]}},
+  {"id":"14","Name":"SARAWAK","geometry":{"type":"MultiPolygon","coordinates":[["srwocn,srwbru,srwocn2,srwbru2,srwocn3,srwsbh,srwind"]]}},
+  {"id":"15","Name":"SELANGOR","geometry":{"type":"MultiPolygon","coordinates":[["sgrocn,sgrprk,sgrphg,sgrnsn"],["sgrkul"],["sgrpjy"]]}},
+  {"id":"16","Name":"TERENGGANU","geometry":{"type":"MultiPolygon","coordinates":[["trgocn,trgphg,trgktn"]]}}
+]

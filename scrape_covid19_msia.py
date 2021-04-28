@@ -179,7 +179,7 @@ class Scraper:
             print(f"[ERROR] {txt} not found! Set to 0 for now.")
             print("Saving to 'txt_error.txt' to check later.\n")
             error_text = f"{txt} - {self.current_date.date()}\n"
-            with open('txt_error.txt', 'a') as f:
+            with open('processed_data//txt_error.txt', 'a') as f:
                 f.write(error_text)
             return None, None
         else:
