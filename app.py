@@ -133,8 +133,8 @@ else:
     all_data_checkbox = st.sidebar.checkbox("Show by Daily Cases", value=True)
     monthly_checkbox = st.sidebar.checkbox("Show by Monthly Cases", value=True)
     state_checkbox = st.sidebar.checkbox("Show by State Cases", value=True)
-    map_checkbox = st.sidebar.checkbox("Show Choropleth Map", value=False)
-    animated_checkbox = st.sidebar.checkbox("Show Animated Map!", value=False)
+    map_checkbox = st.sidebar.checkbox("Show Choropleth Map", value=True)
+    animated_checkbox = st.sidebar.checkbox("Show Animated Map!", value=True)
 
 st.sidebar.info("""The animated map will take awhile to load.""")
 
