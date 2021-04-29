@@ -29,7 +29,7 @@ This app is intended to display some **visualizations** for the COVID-19 cases i
 - App built by [Anson](https://www.linkedin.com/in/ansonnn07/)
 - Built with `Python`, using `streamlit`, `BeautifulSoup`, `pandas`, `numpy`, `plotly`
 
-**Links to my profiles**: GitHub TO INSERT LINK, 
+**Links to my profiles**: [GitHub](https://github.com/ansonnn07/covid19-malaysia), 
 [LinkedIn](https://www.linkedin.com/in/ansonnn07/),
 [Kaggle](https://www.kaggle.com/ansonnn/code)
 ''')
