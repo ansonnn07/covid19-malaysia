@@ -134,9 +134,10 @@ else:
     monthly_checkbox = st.sidebar.checkbox("Show by Monthly Cases", value=True)
     state_checkbox = st.sidebar.checkbox("Show by State Cases", value=True)
     map_checkbox = st.sidebar.checkbox("Show Choropleth Map", value=False)
-    st.sidebar.info("""The animated map takes awhile to load, 
-    and will show on a new tab.""")
     animated_checkbox = st.sidebar.checkbox("Show Animated Map!", value=False)
+
+st.sidebar.info("""The animated map will take awhile to load.""")
+
 
 if (display_one == "Show by Daily Cases") or all_data_checkbox:
     st.markdown("---")
@@ -176,7 +177,9 @@ if (display_one == "Show by Daily Cases") or all_data_checkbox:
         )
     )
     fig.update_xaxes(rangeslider_visible=True)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True,
+                    # config={"displayModeBar": False}
+                    )
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['Cumulative Case'],
@@ -210,8 +213,7 @@ if (display_one == "Show by Daily Cases") or all_data_checkbox:
                           x=0.01
                       ))
     fig.update_yaxes(type='log')
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['New Case'],
@@ -287,8 +289,7 @@ if (display_one == "Show by Daily Cases") or all_data_checkbox:
         standoff=2,
         opacity=0.8)
     fig.update_xaxes(rangeslider_visible=True)
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df.index, y=df['Death'],
@@ -312,8 +313,7 @@ if (display_one == "Show by Daily Cases") or all_data_checkbox:
                           x=0.01
                       ))
     # fig.update_xaxes(rangeslider_visible=True)
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def style_df(df, axis=0):
@@ -342,8 +342,7 @@ if (display_one == "Show by Monthly Cases") or monthly_checkbox:
         fig.update_layout(xaxis_title=None, yaxis_title=None,
                           uniformtext_minsize=8, uniformtext_mode='hide',
                           coloraxis_showscale=False)
-        st.plotly_chart(fig, use_container_width=True,
-                        config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True)
 
     plot_bar('New Case')
     plot_bar('Recovered')
@@ -378,8 +377,7 @@ if (display_one == "Show by Monthly Cases") or monthly_checkbox:
                       )
     fig.update_yaxes(type='log')
     fig.update_xaxes(dtick="M1", tickformat="%b\n%Y")
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
 # STATE DATA
 if (display_one == "Show by State Cases") or state_checkbox:
@@ -411,8 +409,7 @@ if (display_one == "Show by State Cases") or state_checkbox:
                                color="royalblue"
                            ),
                            text='Tip: Double click a legend to isolate only the state')
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
     fig = px.bar(df_state_total.sort_values('Confirmed'), x='Confirmed',
                  y='State_spaced', text='Confirmed',
@@ -427,8 +424,7 @@ if (display_one == "Show by State Cases") or state_checkbox:
                       xaxis_title=None, yaxis_title=None,
                       showlegend=False, coloraxis_showscale=False)
     fig.update_traces(texttemplate='%{text:,}')
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
     fig = px.pie(df_state_total, values='Confirmed',
                  names='State', height=600,
@@ -442,8 +438,7 @@ if (display_one == "Show by State Cases") or state_checkbox:
         # title_x=0.1
     )
 
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def plot_choropleth(df):
@@ -469,8 +464,7 @@ def plot_choropleth(df):
     )
     # fig.update_geos()
     fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=600)
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
 
 if (display_one == "Show Choropleth Map") or map_checkbox:
@@ -495,7 +489,7 @@ if (display_one == "Show Choropleth Map") or map_checkbox:
             color_continuous_scale="YlOrRd",
             # range_color=(0, max_log),
             mapbox_style='open-street-map',
-            zoom=5.5,
+            zoom=4.3,
             center={'lat': 4.1, 'lon': 109.4},
             opacity=0.6
         )
@@ -509,8 +503,7 @@ if (display_one == "Show Choropleth Map") or map_checkbox:
         )
 
         fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=600)
-        st.plotly_chart(fig, use_container_width=True,
-                        config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True)
 
 if (display_one == "Show Animated Map!") or animated_checkbox:
     st.markdown("""
@@ -528,9 +521,9 @@ if (display_one == "Show Animated Map!") or animated_checkbox:
     df_longStyle = style_df(df_longStyle, axis=1)
     st.dataframe(df_longStyle, height=1200)
 
-    st.markdown("""
-    The animated map is shown in another tab to display the entire map clearly.
-    """)
+    # st.markdown("""
+    # The animated map is shown in another tab to display the entire map clearly.
+    # """)
 
     def preprocess_long(df):
         df = pd.melt(df, ignore_index=False,
@@ -549,7 +542,7 @@ if (display_one == "Show Animated Map!") or animated_checkbox:
         df.rename(columns={'Date': 'Month'}, inplace=True)
         return df
 
-    df_longState = preprocess_long(df_longState)
+    df_longState = preprocess_long(df_longState.iloc[1:-1])
 
     def plot_animated_choropleth(df, renderer='browser'):
         fig = px.choropleth(
@@ -560,7 +553,7 @@ if (display_one == "Show Animated Map!") or animated_checkbox:
             hover_name="State",
             hover_data={"id": False, "Confirmed": True},
             # title="Confirmed Cases as of April 15, 2021",
-            color_continuous_scale="YlOrRd",
+            color_continuous_scale="Purp",
             animation_frame="Month"
         )
         fig.update_layout(
@@ -572,6 +565,7 @@ if (display_one == "Show Animated Map!") or animated_checkbox:
                 fitbounds="locations",
                 visible=False
             ),
+            # coloraxis_showscale=False
             # for log transformed values
             # coloraxis_colorbar={
             #     'title': 'Confirmed',
@@ -584,10 +578,12 @@ if (display_one == "Show Animated Map!") or animated_checkbox:
 
         if not renderer:
             fig.show()
+        elif renderer == 'plotly':
+            st.plotly_chart(fig, use_container_width=True)
         else:
             # show in new tab to reduce the notebook size
             fig.show(renderer=renderer)
 
-    with st.spinner("Preparing animated map ...\nThis may take awhile ..."):
-        plot_animated_choropleth(df_longState)
-        st.success("Map displayed on another tab.")
+    with st.spinner("Preparing animated map ... This may take awhile ..."):
+        plot_animated_choropleth(df_longState, renderer='plotly')
+        # st.success("Animated map displayed.")
