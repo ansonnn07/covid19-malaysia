@@ -1,4 +1,5 @@
 # COVID-19 Malaysia Visualizations
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/ansonnn07/covid19-malaysia/main/app.py)
 
 ## Built with
 

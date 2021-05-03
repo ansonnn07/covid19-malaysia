@@ -97,13 +97,13 @@ class Scraper:
         data_datetime = datetime.strptime(data_date, '%d-%m-%Y')
         return data_datetime
 
-    def create_date_dict(self, dt):
+    @staticmethod
+    def create_date_dict(dt):
         month_full = month_translation[dt.strftime('%B')]
         date_dict = {'format1': dt.strftime(
             '%Y/%m/%d'), 'format2': f'{dt.day}-{month_full}-{dt.year}'}
         return date_dict
 
-    @staticmethod
     def create_datetime_and_dict(self, day, month, year):
         data_datetime = self.create_datetime(day, month, year)
         date_dict = self.create_date_dict(data_datetime)
