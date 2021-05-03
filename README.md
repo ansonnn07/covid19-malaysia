@@ -17,6 +17,12 @@ This project is intended to display some interactive visualizations for COVID-19
 
 The motivation for this project is to create better and interactive plots for the people to see the overview of the COVID-19 cases in Malaysia more clearly.
 
+I have spent quite a long time trying to scrape the data from the news articles due to some inconsistencies in the texts of the articles. **Scraping from texts** also required a lot of manipulation with regular expressions (`regex`), which is not exactly a very simple thing.
+
+If you want to refer to how the web scraping was done, you can refer to the `scrape_covid19_msia.ipynb` notebook but the latest updates have been done in the Python script `scrape_covid19_msia.py`. So you should refer to both for better understanding.
+
+Thank you for checking out!
+
 ## Web Application
 There is a Web App that can be accessed [here](https://share.streamlit.io/ansonnn07/covid19-malaysia/main/app.py) which you can directly see all the visualizations made.
 
