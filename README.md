@@ -19,7 +19,9 @@ The motivation for this project is to create better and interactive plots for th
 
 I have spent quite a long time trying to scrape the data from the news articles due to some inconsistencies in the texts of the articles. **Scraping from texts** also required a lot of manipulation with regular expressions (`regex`), which is not exactly a very simple thing.
 
-If you want to refer to how the web scraping was done, you can refer to the `scrape_covid19_msia.ipynb` notebook but the latest updates have been done in the Python script `scrape_covid19_msia.py`. So you should refer to both for better understanding.
+If you want to refer to how the web scraping was done, you can refer to the `scrape_covid19_msia.ipynb` notebook but the latest updates have been done in the Python script `scrape_covid19_msia.py`. So you should refer to both for better understanding. I have created a static choropleth map and another animated version using a Malaysia's GeoJSON file.
+
+The GeoJSON file for Malaysia's map with state borders is obtained from https://www.igismap.com/download-malaysia-shapefile-area-map-free-country-boundary-state-polygon/
 
 Thank you for checking out!
 
