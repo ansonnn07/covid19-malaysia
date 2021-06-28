@@ -27,7 +27,8 @@ class AsyncScraper(Scraper):
         self.verbose = 0
         self.current_response_dict = None
 
-    async def fetch(self, session, current_date, url):
+    @staticmethod
+    async def fetch(session, current_date, url):
         async with session.get(url) as response:
             assert response.status == 200, f"Error accessing page on {current_date}\n{url}"
             html_body = await response.read()
@@ -107,7 +108,8 @@ class AsyncScraper(Scraper):
             self.current_url = result['url']
             print(f"\nCurrent date: {self.current_date.date()}\n")
             try:
-                if self.current_date == self.new_format_date:
+                if self.current_date >= self.new_format_date \
+                        and not self.new_format_flag:
                     print("[ATTENTION] USING NEW text format "
                           f"starting from {self.current_date.date()}.")
                     self.new_format_flag = True

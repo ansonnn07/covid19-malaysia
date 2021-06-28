@@ -404,7 +404,8 @@ class Scraper:
                 #     self.new_format_flag = True
                 #     data_dict = self.scrape_data_new(verbose=verbose)
 
-                if self.current_date == self.new_format_date:
+                if self.current_date >= self.new_format_date \
+                        and not self.new_format_flag:
                     print("[ATTENTION] USING NEW text format "
                           f"starting from {self.current_date.date()}.")
                     self.new_format_flag = True
