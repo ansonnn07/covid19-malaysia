@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import sys
@@ -8,9 +9,13 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 import requests
+from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 from IPython.display import display
 
+CSV_DIR = "original_data"
+
+# translate the months from English to Malay
 month_translation = {"January": "januari",
                      "February": "februari",
                      "March": "mac",
@@ -33,6 +38,7 @@ cases_to_extract_new = ["sembuh", "kumulatif_sembuh", "baharu",
                         "aktif", "Unit Rawatan Rapi",
                         "pernafasan", "kematian", "kumulatif_kematian"]
 
+# column names for the DataFrame
 column_names = ["Date", "Recovered", "Cumulative Recovered", "Imported Case",
                 "Local Case", "Active Case", "New Case",
                 "Cumulative Case", "ICU", "Ventilator",
@@ -52,6 +58,7 @@ case_name_mapping = {'(pulih|sembuh)': "Recovered",
                      "tempatan": "Local Case", "aktif": "Active Case",
                      "kematian": "Death", "kumulatif_kematian": "Cumulative Death"}
 
+# the default format of the URL used by the website
 default_url = "https://kpkesihatan.com/{format1}/kenyataan-akhbar-kpk-{format2}-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
 
 special_dates = ['16-Apr-2020', '13-May-2020', '28-May-2020',
@@ -59,6 +66,7 @@ special_dates = ['16-Apr-2020', '13-May-2020', '28-May-2020',
                  '10-Dec-2020']
 special_dt = [datetime.strptime(i, '%d-%b-%Y')
               for i in special_dates]
+# the URLs which are different than usual format
 special_urls = ["https://kpkesihatan.com/2020/04/16/kenyataan-akhbar-16-april-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
                 "https://kpkesihatan.com/2020/05/13/kenyataan-akhbar-kpk-13-may-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
                 "https://kpkesihatan.com/2020/05/28/situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/",
@@ -81,13 +89,15 @@ class Scraper:
         # inclusive of final date
         self.total_days = (self.end_date - self.start_date).days + 1
 
-        self.current_date, self.current_date_dict = self.start_date, self.start_date_dict
-
-        self.df = pd.DataFrame(columns=column_names)
+        self.current_date = self.start_date
+        self.current_date_dict = self.start_date_dict
 
         self.new_format_flag = False
+        # the date where the articles start using a new writing format
         self.new_format_date = datetime(2021, 1, 20)
 
+        # initialize to keep track of the record of the
+        #   cumulative death of the previous day
         self.prev_cumu_death = None
 
     @staticmethod
@@ -99,6 +109,7 @@ class Scraper:
 
     @staticmethod
     def create_date_dict(dt):
+        """to be passed to the default_url to create the URL for the date"""
         month_full = month_translation[dt.strftime('%B')]
         date_dict = {'format1': dt.strftime(
             '%Y/%m/%d'), 'format2': f'{dt.day}-{month_full}-{dt.year}'}
@@ -138,6 +149,7 @@ class Scraper:
 
             distance_list.append(distance)
 
+        # find the minimum distance to find the closest digit
         min_dist = min(distance_list)
         min_index = distance_list.index(min_dist)
         if self.current_txt == 'jumlah kes positif':
@@ -217,11 +229,15 @@ class Scraper:
                 return matched_number
         return 'error'
 
-    def scrape_data(self, verbose=0):
+    def get_soup(self):
         r = requests.get(self.current_url)
         if r.status_code == 404:
             raise Exception("Error 404 accessing page!!")
         soup = BeautifulSoup(r.content, "lxml")
+        return soup
+
+    def scrape_data(self, verbose=0):
+        soup = self.get_soup()
         all_text = soup.get_text()
         # Remove all COVID-19 words to avoid getting number 19 accidentally
         all_text = all_text.replace('COVID-19', '')\
@@ -333,10 +349,7 @@ class Scraper:
         return data_dict
 
     def scrape_data_new(self, verbose=0):
-        r = requests.get(self.current_url)
-        if r.status_code == 404:
-            raise Exception("Error 404 accessing page!!")
-        soup = BeautifulSoup(r.content, "lxml")
+        soup = self.get_soup()
 
         data_dict = {}
 
@@ -371,6 +384,8 @@ class Scraper:
         return data_dict
 
     def scrape_all(self, verbose=0):
+        df = pd.DataFrame(columns=column_names)
+
         start_time = time.time()
         for day_number in range(self.total_days):
             self.setup_current_url(day_number)
@@ -406,7 +421,7 @@ class Scraper:
                 # df.loc[current_date] = data_dict
                 data_dict["Date"] = self.current_date
                 data_dict["URL"] = self.current_url
-                self.df = self.df.append(data_dict, ignore_index=True)
+                df = df.append(data_dict, ignore_index=True)
 
                 self.current_date += timedelta(days=1)
                 self.current_date_dict = self.create_date_dict(
@@ -414,13 +429,13 @@ class Scraper:
             except:
                 # save a csv file to check
                 filename = f"{self.start_date.date()}_{self.current_date.date()}.csv"
-                self.df.to_csv(os.path.join(
-                    "csv_files", filename), index=False)
+                df.to_csv(os.path.join(
+                    CSV_DIR, filename), index=False)
                 print("[ERROR] Problem with", self.current_url)
                 raise Exception(f"Error on {self.current_date.date()}")
 
         filename = f"{self.start_date.date()}_{self.end_date.date()}.csv"
-        self.df.to_csv(os.path.join("csv_files", filename), index=False)
+        df.to_csv(os.path.join(CSV_DIR, filename), index=False)
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
         total_time = time.time() - start_time
         # 285 seconds
@@ -429,11 +444,16 @@ class Scraper:
     def tables_to_csv(self):
         filename = (f"state_new_{self.start_date.date()}"
                     f"_{self.end_date.date()}.csv")
-        self.df_all_new.to_csv(os.path.join("csv_files", filename))
+        self.df_all_new.to_csv(os.path.join(CSV_DIR, filename))
 
         filename = (f"state_cumu_{self.start_date.date()}"
                     f"_{self.end_date.date()}.csv")
-        self.df_all_cumu.to_csv(os.path.join("csv_files", filename))
+        self.df_all_cumu.to_csv(os.path.join(CSV_DIR, filename))
+
+    def extract_table(self, html_body):
+        return pd.read_html(html_body,
+                            match='JUMLAH KESELURUHAN',
+                            header=0)[-1]
 
     def scrape_table(self):
         start_time = time.time()
@@ -453,9 +473,7 @@ class Scraper:
 
             try:
                 # extract the last table containing JUMLAH KESELURUHAN to be exact
-                df = pd.read_html(r.content,
-                                  match='JUMLAH KESELURUHAN',
-                                  header=0)[-1]
+                df = self.extract_table(r.content)
 
                 # Setup the df into the proper format with one row for each date
                 df = df.set_index('NEGERI')
@@ -513,7 +531,7 @@ class Scraper:
         but cannot add URL column easily.
         """
 
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         def finalize_df():
             # Replace wrong names
@@ -532,11 +550,11 @@ class Scraper:
 
             filename = (f"2_state_new_{self.start_date.date()}"
                         f"_{self.end_date.date()}.csv")
-            new_df.to_csv(os.path.join("csv_files", filename))
+            new_df.to_csv(os.path.join(CSV_DIR, filename))
 
             filename = (f"2_state_cumu_{self.start_date.date()}"
                         f"_{self.end_date.date()}.csv")
-            cumu_df.to_csv(os.path.join("csv_files", filename))
+            cumu_df.to_csv(os.path.join(CSV_DIR, filename))
 
         state_column_names = ['State', 'New Case', 'Cumulative Case']
         self.state_df = pd.DataFrame(columns=state_column_names)
@@ -570,17 +588,17 @@ class Scraper:
         # handle and save the df
         finalize_df()
         print("\n[INFO] CONGRATS! You have scraped until the end date!")
-        total_time = time.time() - start_time
+        total_time = time.perf_counter() - start_time
         # 270 seconds
         print(f"Total time elapsed: {total_time:.2f} seconds")
 
-    def test_scrape_first_day(self, new_format=0, verbose=0):
+    def test_scrape_first_day(self, verbose=0):
         self.current_url = default_url.format(**self.start_date_dict)
         r = requests.get(self.current_url)
         if r.status_code == 404:
             raise Exception("Error 404 accessing page!!")
 
-        if not new_format:
+        if not self.current_date >= self.new_format_date:
             data_dict = self.scrape_data(verbose=verbose)
         else:
             data_dict = self.scrape_data_new(verbose=verbose)
@@ -595,131 +613,132 @@ class Scraper:
         self.scrape(verbose=verbose)
 
 
-# FIRST DATE TO SCRAPE
-first_date = Scraper.create_datetime(day=27, month=3, year=2020)
+if __name__ == '__main__':
+    # FIRST DATE TO SCRAPE
+    first_date = Scraper.create_datetime(day=27, month=3, year=2020)
 
-# NEW FORMAT ON 2021-01-20
-start_date = Scraper.create_datetime(day=1, month=10, year=2020)
+    # NEW FORMAT ON 2021-01-20
+    start_date = Scraper.create_datetime(day=21, month=1, year=2021)
 
-# FINAL DATE TO SCRAPE SO FAR
-final_date = Scraper.create_datetime(day=15, month=4, year=2021)
+    # FINAL DATE TO SCRAPE SO FAR
+    final_date = Scraper.create_datetime(day=15, month=4, year=2021)
 
-# testing misc dates
-# start_date = Scraper.create_datetime(day=31, month=3, year=2021)
-end_date = Scraper.create_datetime(day=5, month=11, year=2020)
+    # testing misc dates
+    # start_date = Scraper.create_datetime(day=31, month=3, year=2021)
+    end_date = Scraper.create_datetime(day=20, month=4, year=2021)
 
-# scraper = Scraper(first_date, end_date)
-scraper = Scraper(start_date, end_date)
-# scraper = Scraper(start_date, final_date)
+    # scraper = Scraper(first_date, end_date)
+    scraper = Scraper(start_date, end_date)
+    # scraper = Scraper(start_date, final_date)
 
-# scrape all days
-# scraper = Scraper(first_date, final_date)
+    # scrape all days
+    # scraper = Scraper(first_date, final_date)
 
-verbose = 0
-scraper.scrape_all(verbose=verbose)
-# scraper.scrape_table()
-# scraper.scrape_table_2()
+    verbose = 0
+    scraper.scrape_all(verbose=verbose)
+    # scraper.scrape_table()
+    # scraper.scrape_table_2()
 
-# data_dict = scraper.test_scrape_first_day(verbose=verbose)
-# data_dict = scraper.test_scrape_first_day(new_format=1, verbose=verbose)
+    # data_dict = scraper.test_scrape_first_day(verbose=verbose)
 
-# scraper.continue_scraping(verbose=verbose)
+    # scraper.continue_scraping(verbose=verbose)
 
-test_scrape = 0
-if test_scrape:
-    # current_url = "https://kpkesihatan.com/2021/04/17/kenyataan-akhbar-kpk-17-april-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    current_url = "https://kpkesihatan.com/2020/10/01/kenyataan-akhbar-kpk-1-oktober-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    # current_url = "https://kpkesihatan.com/2020/03/27/kenyataan-akhbar-kpk-27-mac-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    r = requests.get(current_url)
-    if r.status_code == 404:
-        raise Exception("Error 404 accessing page!!")
-    soup = BeautifulSoup(r.content, "lxml")
+    test_scrape = 0
+    if test_scrape:
+        # current_url = "https://kpkesihatan.com/2021/04/17/kenyataan-akhbar-kpk-17-april-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+        current_url = "https://kpkesihatan.com/2020/10/01/kenyataan-akhbar-kpk-1-oktober-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+        # current_url = "https://kpkesihatan.com/2020/03/27/kenyataan-akhbar-kpk-27-mac-2020-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+        r = requests.get(current_url)
+        if r.status_code == 404:
+            raise Exception("Error 404 accessing page!!")
+        soup = BeautifulSoup(r.content, "lxml")
 
-    def replace_comma_sep_digits(matchObj):
-        comma_sep_digits = matchObj.group()
-        new_number = comma_sep_digits.replace(',', '').replace(' ', '')
-        return new_number
+        def replace_comma_sep_digits(matchObj):
+            comma_sep_digits = matchObj.group()
+            new_number = comma_sep_digits.replace(',', '').replace(' ', '')
+            return new_number
 
-    all_text = soup.get_text()
-    all_text = all_text.replace('COVID-19', '')\
-        .replace('covid19', '').replace('\xa0', ' ')
-    all_text = unicodedata.normalize('NFKD', all_text)
-    all_text = re.sub(r"\d+,\s*\d+", replace_comma_sep_digits, all_text)
+        all_text = soup.get_text()
+        all_text = all_text.replace('COVID-19', '')\
+            .replace('covid19', '').replace('\xa0', ' ')
+        all_text = unicodedata.normalize('NFKD', all_text)
+        all_text = re.sub(r"\d+,\s*\d+", replace_comma_sep_digits, all_text)
 
-    current_date = Scraper.create_datetime(1, 10, 2020)
-    if current_date == datetime(2020, 10, 1):
-        all_text = all_text.replace(' 5 angka, ', ' ')
+        current_date = Scraper.create_datetime(1, 10, 2020)
+        if current_date == datetime(2020, 10, 1):
+            all_text = all_text.replace(' 5 angka, ', ' ')
 
-    txt = 'kumulatif kes yang telah pulih'
-    # sentence = re.search(rf"([^.\n]*{txt}[^.]*[.]+)", test_text).group()
-    sentence = re.search(rf"([^.,\n]*{txt}[^.,]*[.,]+)", all_text).group()
-    txt_found = re.search(txt, sentence)
-    numbers_found = list(re.finditer(r"\d+,*\d+", sentence))
+        txt = 'kumulatif kes yang telah pulih'
+        # sentence = re.search(rf"([^.\n]*{txt}[^.]*[.]+)", test_text).group()
+        sentence = re.search(rf"([^.,\n]*{txt}[^.,]*[.,]+)", all_text).group()
+        txt_found = re.search(txt, sentence)
+        numbers_found = list(re.finditer(r"\d+,*\d+", sentence))
 
-    txt_to_search = "JUMLAH KESELURUHAN"
-    # txt = "kes baharu"
-    test_txt = "jumlah kes positif"
-    # the correct index for the number
-    number_idx = 1 if test_txt == "kes baharu" else 2
-    sentence_tag = [tags for tags in soup.find_all(
-        "tr") if txt_to_search in tags.text][-1]
-    matched_number_str = sentence_tag.find_all("td")[number_idx].text
-    matched_number_str = matched_number_str.replace(',', '').replace(' ', '')
-    matched_number_str = re.sub(r'\(.+\)', ' ', matched_number_str)
-    matched_number = int(matched_number_str)
+        txt_to_search = "JUMLAH KESELURUHAN"
+        # txt = "kes baharu"
+        test_txt = "jumlah kes positif"
+        # the correct index for the number
+        number_idx = 1 if test_txt == "kes baharu" else 2
+        sentence_tag = [tags for tags in soup.find_all(
+            "tr") if txt_to_search in tags.text][-1]
+        matched_number_str = sentence_tag.find_all("td")[number_idx].text
+        matched_number_str = matched_number_str.replace(
+            ',', '').replace(' ', '')
+        matched_number_str = re.sub(r'\(.+\)', ' ', matched_number_str)
+        matched_number = int(matched_number_str)
 
-test_scrape_new = 0
-if test_scrape_new:
-    # current_url = "https://kpkesihatan.com/2021/01/20/kenyataan-akhbar-kpk-20-januari-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    current_url = "https://kpkesihatan.com/2021/01/20/kenyataan-akhbar-kpk-20-januari-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
-    r = requests.get(current_url)
-    if r.status_code == 404:
-        raise Exception("Error 404 accessing page!!")
-    soup = BeautifulSoup(r.content, "lxml")
+    test_scrape_new = 0
+    if test_scrape_new:
+        # current_url = "https://kpkesihatan.com/2021/01/20/kenyataan-akhbar-kpk-20-januari-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+        current_url = "https://kpkesihatan.com/2021/01/20/kenyataan-akhbar-kpk-20-januari-2021-situasi-semasa-jangkitan-penyakit-coronavirus-2019-covid-19-di-malaysia/"
+        r = requests.get(current_url)
+        if r.status_code == 404:
+            raise Exception("Error 404 accessing page!!")
+        soup = BeautifulSoup(r.content, "lxml")
 
-    def replace_comma_sep_digits(matchObj):
-        comma_sep_digits = matchObj.group()
-        new_number = comma_sep_digits.replace(',', '').replace(' ', '')
-        return new_number
+        def replace_comma_sep_digits(matchObj):
+            comma_sep_digits = matchObj.group()
+            new_number = comma_sep_digits.replace(',', '').replace(' ', '')
+            return new_number
 
-    def find_number_new(soup, txt, number_idx):
-        all_case_ul = soup.find_all("ul")[1]
-        for li_tag in all_case_ul:
-            if txt in li_tag.text:
-                sentence = li_tag.text
-                sentence_comma_removed = re.sub(
-                    r"\d+,\s*\d+", replace_comma_sep_digits, sentence)
-                numbers_found = re.findall(r'\d+', sentence_comma_removed)
-                matched_number = int(numbers_found[number_idx])
-                return matched_number
-        return None
+        def find_number_new(soup, txt, number_idx):
+            all_case_ul = soup.find_all("ul")[1]
+            for li_tag in all_case_ul:
+                if txt in li_tag.text:
+                    sentence = li_tag.text
+                    sentence_comma_removed = re.sub(
+                        r"\d+,\s*\d+", replace_comma_sep_digits, sentence)
+                    numbers_found = re.findall(r'\d+', sentence_comma_removed)
+                    matched_number = int(numbers_found[number_idx])
+                    return matched_number
+            return None
 
-    data_dict = {}
+        data_dict = {}
 
-    for txt in cases_to_extract_new:
-        if verbose:
-            print(f"[INFO] Finding {txt} ...")
+        for txt in cases_to_extract_new:
+            if verbose:
+                print(f"[INFO] Finding {txt} ...")
 
-        try:
-            if 'kumulatif' in txt:
-                number_idx = 1
-                # get the name to search: one of ('sembuh', 'baharu', 'kematian')
-                txt_to_search = txt.split("_")[1]
-                matched_number = find_number_new(
-                    soup, txt_to_search, number_idx)
-            else:
-                number_idx = 0
-                matched_number = find_number_new(soup, txt, number_idx)
-                # li_text_list = [li_tag.text for li_tag in all_case_ul if txt in li_tag.text]
-        except Exception as e:
-            print(f"\nError obtaining {txt} !!")
-            raise Exception(f"{e.__class__} occurred.")
+            try:
+                if 'kumulatif' in txt:
+                    number_idx = 1
+                    # get the name to search: one of ('sembuh', 'baharu', 'kematian')
+                    txt_to_search = txt.split("_")[1]
+                    matched_number = find_number_new(
+                        soup, txt_to_search, number_idx)
+                else:
+                    number_idx = 0
+                    matched_number = find_number_new(soup, txt, number_idx)
+                    # li_text_list = [li_tag.text for li_tag in all_case_ul if txt in li_tag.text]
+            except Exception as e:
+                print(f"\nError obtaining {txt} !!")
+                raise Exception(f"{e.__class__} occurred.")
 
-        if not matched_number:
-            raise Exception(f"[ERROR] No number found for {txt}")
+            if not matched_number:
+                raise Exception(f"[ERROR] No number found for {txt}")
 
-        correct_col_name = case_name_mapping[txt]
-        data_dict[correct_col_name] = matched_number
+            correct_col_name = case_name_mapping[txt]
+            data_dict[correct_col_name] = matched_number
 
-    print(current_url)
-    display(data_dict)
+        print(current_url)
+        display(data_dict)
